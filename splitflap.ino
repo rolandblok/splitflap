@@ -16,10 +16,12 @@
 #define NO_FLAPS      40
 #define MOTOR_STEPS   2048
 
+
 void(*resetFunc) (void) = 0; 
 
 static unsigned int glb_flap_positions[NO_FLAPS];
 static unsigned int glb_rondje = 0 ; // debug variable
+static unsigned int glb_delay_ms = 3;
 
 void determine_flap_positions(unsigned int zero_position) {
   float steps_per_flap = MOTOR_STEPS / NO_FLAPS;
@@ -29,7 +31,7 @@ void determine_flap_positions(unsigned int zero_position) {
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Split Flap This");
   pinMode(  STEPPER_PIN_1, OUTPUT);
   pinMode(  STEPPER_PIN_2, OUTPUT);
@@ -50,6 +52,8 @@ void setup() {
 
 void loop() {
   static unsigned int from_zero_step = 0;
+  static bool paused = false;
+  static int pause_steps_remain = 0;
   // ===============
   // serial business
   if (Serial.available() > 0) {
@@ -68,11 +72,27 @@ void loop() {
       } else { 
         Serial.println("zero not recognized : " + command.substring(2));
       }
+    } else if (command.startsWith("d")) {
+      long delay_ms = command.substring(2).toInt();
+      if (delay_ms > -1) {
+        glb_delay_ms = delay_ms;
+      }
+    } else if (command.startsWith("p")) {
+      paused = !paused;
+      Serial.println("Paused is " + String(paused));
+    } else if (command.startsWith("s")) {
+      long pause_steps_remain_l = command.substring(2).toInt();
+      pause_steps_remain = pause_steps_remain_l;
+      
     } else if (command.startsWith("x")) {
         glb_rondje = 0;
     } else { 
         Serial.println("commands: ");
-        Serial.println("  z 100  : zero position at step 100 from hall zero (-1 : no pause)");
+        Serial.println("  z 100  : zero position at step 100 from hall zero (-1 : no pause) ; cur:" + String(eeprom_getZeroPosition()));
+        Serial.println("  d 3    : set step delay [ms] ; cur " + String(glb_delay_ms));
+        Serial.println("  p      : (un)pause animation ; cur " + String(paused));
+        Serial.println("  s 100  : when in paused mode : set 100 steps (negative possible)");
+        Serial.println("  x      : restart animation");
         Serial.println("  restart: restart micro controller");
         eeprom_serial();
         Serial.flush();
@@ -99,21 +119,36 @@ void loop() {
   }
   last_hall_val = hall_val;
 
+
+  // animation
   static int huidige = 0;
-  if (glb_flap_positions[huidige] == from_zero_step) {
-    huidige++;
-    if (glb_rondje % 2) {
-      delay(2000);
+  if (!paused) {
+    if (glb_flap_positions[huidige] == from_zero_step) {
+      huidige++;
+      if (glb_rondje % 2) {
+        delay(2000);
+      }
+      if (huidige == NO_FLAPS) {
+        huidige = 0;
+        glb_rondje ++;
+      }
     }
-    if (huidige == NO_FLAPS) {
-      huidige = 0;
-      glb_rondje ++;
-    }
-      
-  } 
+    OneFullStep(false);
+    from_zero_step++;
+
+  } else {
+    if (pause_steps_remain > 0) {
+      Serial.println(" manual step " + String(pause_steps_remain));
+      OneFullStep(false);
+      pause_steps_remain--;
+    } else if (pause_steps_remain < 0) {
+      Serial.println(" manual step " + String(pause_steps_remain));
+      OneFullStep(true);
+      pause_steps_remain++;
+    } 
+  }
   
-  OneFullStep(false);
-  from_zero_step++;
+  delay(glb_delay_ms); // 2 ms has almost no torque https://www.youtube.com/watch?v=14jF8umwJLI
 
 }
 
@@ -162,8 +197,8 @@ void OneFullStep(bool dir) {
   if (step_number < 0 ) {
     step_number = 3;
   }
-  delay(3); // 2 ms has almost no torque https://www.youtube.com/watch?v=14jF8umwJLI
 }
+
 void OneHalfStep(bool dir) {
   // full step
     //https://www.youtube.com/watch?v=B86nqDRskVU
@@ -225,5 +260,5 @@ void OneHalfStep(bool dir) {
   if (step_number < 0 ) {
     step_number = 7;
   }
-  delay(3); // 2 ms has almost no torque https://www.youtube.com/watch?v=14jF8umwJLI
+
 }
