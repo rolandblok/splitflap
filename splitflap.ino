@@ -21,7 +21,7 @@ void(*resetFunc) (void) = 0;
 
 static unsigned int glb_flap_positions[NO_FLAPS];
 static unsigned int glb_rondje = 0 ; // debug variable
-static unsigned int glb_delay_ms = 3;
+static unsigned int glb_delay_us = 2000;
 
 void determine_flap_positions(unsigned int zero_position) {
   float steps_per_flap = MOTOR_STEPS / NO_FLAPS;
@@ -73,9 +73,9 @@ void loop() {
         Serial.println("zero not recognized : " + command.substring(2));
       }
     } else if (command.startsWith("d")) {
-      long delay_ms = command.substring(2).toInt();
-      if (delay_ms > -1) {
-        glb_delay_ms = delay_ms;
+      long delay_10th_ms = command.substring(2).toInt();
+      if (delay_10th_ms > 0) {
+        glb_delay_us = 100* delay_10th_ms;
       }
     } else if (command.startsWith("p")) {
       paused = !paused;
@@ -89,7 +89,7 @@ void loop() {
     } else { 
         Serial.println("commands: ");
         Serial.println("  z 100  : zero position at step 100 from hall zero (-1 : no pause) ; cur:" + String(eeprom_getZeroPosition()));
-        Serial.println("  d 3    : set step delay [ms] ; cur " + String(glb_delay_ms));
+        Serial.println("  d 30   : set step 10th delay [0.1 ms] ; cur " + String(glb_delay_us/100));
         Serial.println("  p      : (un)pause animation ; cur " + String(paused));
         Serial.println("  s 100  : when in paused mode : set 100 steps (negative possible)");
         Serial.println("  x      : restart animation");
@@ -126,6 +126,7 @@ void loop() {
     if (glb_flap_positions[huidige] == from_zero_step) {
       huidige++;
       if (glb_rondje % 2) {
+        PowerDown();
         delay(2000);
       }
       if (huidige == NO_FLAPS) {
@@ -145,14 +146,20 @@ void loop() {
       Serial.println(" manual step " + String(pause_steps_remain));
       OneFullStep(true);
       pause_steps_remain++;
-    } 
+    } else {
+      PowerDown();
+    }
   }
   
-  delay(glb_delay_ms); // 2 ms has almost no torque https://www.youtube.com/watch?v=14jF8umwJLI
 
 }
 
-
+void PowerDown() {
+    digitalWrite(STEPPER_PIN_1, LOW);
+    digitalWrite(STEPPER_PIN_2, LOW);
+    digitalWrite(STEPPER_PIN_3, LOW);
+    digitalWrite(STEPPER_PIN_4, LOW);
+}
 
 //float stepsPerRevolution = 64;
 //float degreePerRevolution = 5.625;
@@ -197,6 +204,8 @@ void OneFullStep(bool dir) {
   if (step_number < 0 ) {
     step_number = 3;
   }
+  delayMicroseconds(glb_delay_us); // 2 ms has almost no torque https://www.youtube.com/watch?v=14jF8umwJLI
+  
 }
 
 void OneHalfStep(bool dir) {
@@ -260,5 +269,6 @@ void OneHalfStep(bool dir) {
   if (step_number < 0 ) {
     step_number = 7;
   }
-
+  delayMicroseconds(glb_delay_us); // 2 ms has almost no torque https://www.youtube.com/watch?v=14jF8umwJLI
+  
 }
